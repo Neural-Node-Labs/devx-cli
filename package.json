@@ -1,0 +1,26 @@
+{
+  "name": "devx",
+  "version": "0.1.0",
+  "description": "Agentic DevX CLI powered by a local Ollama/DeepSeek model",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "devx": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "ts-node src/cli/index.ts",
+    "dev": "ts-node src/cli/index.ts"
+  },
+  "dependencies": {
+    "glob": "^10.4.5",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
