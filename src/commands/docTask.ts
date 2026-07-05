@@ -1,3 +1,8 @@
+/**
+ * @file src/commands/docTask.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ParsedCli } from "../cli/parseArgs";
 
 export const DOC_TYPES = ["readme", "blueprint", "scenario", "testsuite", "setup", "testcase"] as const;

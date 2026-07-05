@@ -1,3 +1,8 @@
+/**
+ * @file src/tools/registry.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ToolDefinition } from "../types";
 import { createGlobTool } from "./glob";
 import { createGrepTool } from "./grep";

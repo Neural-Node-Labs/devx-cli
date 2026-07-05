@@ -1,4 +1,9 @@
-import { OllamaClient } from "../llm/ollamaClient";
+/**
+ * @file src/agent/orchestrator.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
+import { LlmClient } from "../llm/types";
 import { buildToolRegistry } from "../tools/registry";
 import { buildSystemPrompt, INITIAL_USER_MESSAGE } from "./promptBuilder";
 import { parseAgentResponse } from "./responseParser";
@@ -37,7 +42,7 @@ export interface RunResult {
  */
 export async function runAgent(
   taskDescription: string,
-  llm: OllamaClient,
+  llm: LlmClient,
   options: OrchestratorOptions = {}
 ): Promise<RunResult> {
   const cwd = options.cwd ?? process.cwd();

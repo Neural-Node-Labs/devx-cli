@@ -1,3 +1,8 @@
+/**
+ * @file src/commands/fix.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ParsedCli } from "../cli/parseArgs";
 
 /**

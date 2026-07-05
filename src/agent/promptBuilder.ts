@@ -1,3 +1,8 @@
+/**
+ * @file src/agent/promptBuilder.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { renderToolsForPrompt } from "../tools/registry";
 import { ToolDefinition } from "../types";
 

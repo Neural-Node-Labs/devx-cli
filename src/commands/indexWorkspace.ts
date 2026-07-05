@@ -1,4 +1,9 @@
-import { OllamaClient } from "../llm/ollamaClient";
+/**
+ * @file src/commands/indexWorkspace.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
+import { LlmClient } from "../llm/types";
 import { buildIndex, getIndexPath } from "../index/indexManager";
 
 /**
@@ -7,7 +12,7 @@ import { buildIndex, getIndexPath } from "../index/indexManager";
  * and writes .devx/index.json. This is a direct scan, not a ReAct agent loop — there's
  * nothing to "decide" here, just files to process.
  */
-export async function runIndexCommand(cwd: string, llm: OllamaClient): Promise<void> {
+export async function runIndexCommand(cwd: string, llm: LlmClient): Promise<void> {
   console.log(`devx: indexing workspace at ${cwd} ...\n`);
 
   const index = await buildIndex(cwd, llm, {

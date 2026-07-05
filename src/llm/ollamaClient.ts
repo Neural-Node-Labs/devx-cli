@@ -1,79 +1,49 @@
+/**
+ * @file src/llm/ollamaClient.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ChatMessage, OllamaChatOptions } from "../types";
 import { LlmLogger } from "../agent/llmLogger";
+import { BaseHttpLlmClient, HttpRequestSpec } from "./baseClient";
 
 /**
- * Minimal client for a local Ollama server running a DeepSeek model
- * (e.g. deepseek-coder-v2, deepseek-r1, deepseek-v2).
- *
- * Ollama exposes an OpenAI-ish /api/chat endpoint:
- *   POST {baseUrl}/api/chat
- *   { model, messages, stream: false, options: { temperature } }
+ * Client for a local Ollama server (e.g. deepseek-coder-v2, deepseek-r1, llama3, etc.).
+ * Ollama exposes an Ollama-flavored /api/chat endpoint (distinct from the OpenAI-compatible
+ * /v1/chat/completions endpoint newer Ollama versions also expose — this client uses the
+ * native one since it's been available the longest across Ollama versions).
  */
-export class OllamaClient {
+export class OllamaClient extends BaseHttpLlmClient {
   private model: string;
   private baseUrl: string;
   private temperature: number;
-  private logger?: LlmLogger;
-  private iterationCounter = 0;
 
   constructor(options: OllamaChatOptions, logger?: LlmLogger) {
+    const baseUrl = options.baseUrl.replace(/\/$/, "");
+    super(options.model, baseUrl, logger);
     this.model = options.model;
-    this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    this.baseUrl = baseUrl;
     this.temperature = options.temperature ?? 0.2;
-    this.logger = logger;
   }
 
-  async chat(messages: ChatMessage[]): Promise<string> {
-    this.iterationCounter++;
-    const payload = {
-      model: this.model,
-      messages,
-      stream: false,
-      options: { temperature: this.temperature },
+  protected buildRequest(messages: ChatMessage[]): HttpRequestSpec {
+    return {
+      url: `${this.baseUrl}/api/chat`,
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: this.model,
+        messages,
+        stream: false,
+        options: { temperature: this.temperature },
+      },
     };
-    const startedAt = Date.now();
-    let response = "";
-    let errorMsg: string | undefined;
+  }
 
-    try {
-      const res = await fetch(`${this.baseUrl}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        errorMsg =
-          `Ollama request failed (${res.status} ${res.statusText}). ` +
-          `Is 'ollama serve' running and is model "${this.model}" pulled? ${text}`;
-      } else {
-        const data: any = await res.json();
-        const content = data?.message?.content;
-        if (typeof content !== "string") {
-          response = JSON.stringify(data);
-          errorMsg = `Unexpected Ollama response shape: ${JSON.stringify(data).slice(0, 500)}`;
-        } else {
-          response = content;
-        }
-      }
-    } catch (err: any) {
-      errorMsg = err.message;
+  protected parseResponse(data: any): string {
+    const content = data?.message?.content;
+    if (typeof content !== "string") {
+      throw new Error("missing message.content");
     }
-
-    this.logger?.logExchange({
-      iteration: this.iterationCounter,
-      model: this.model,
-      baseUrl: this.baseUrl,
-      request: payload,
-      response,
-      latencyMs: Date.now() - startedAt,
-      error: errorMsg,
-    });
-
-    if (errorMsg) {
-      throw new Error(errorMsg);
-    }
-    return response;
+    return content;
   }
 }

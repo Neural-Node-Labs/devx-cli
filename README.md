@@ -1,15 +1,23 @@
-# devx — Agentic DevX CLI
+# Software Engineer Agentic CLI (SEA CLI)
 
-A local, agentic coding CLI powered by **Ollama + DeepSeek** (no API key required).
-It runs a real Thought → Action → Observation loop against your project on disk:
-searching with `glob`/`grep`/`read`, making changes with `write`/`edit`, and
-**validating** every change by actually running commands (tests, build, lint).
+An agentic coding CLI that runs a real Thought → Action → Observation loop against your
+project on disk: searching with `glob`/`grep`/`read`, making changes with `write`/`edit`,
+and **validating** every change by actually running commands (tests, build, lint).
+
+Ships as the `devx` command by default — the name is just configurable branding (see
+[Renaming the CLI](#renaming-the-cli) below), not a fixed identity, so it's easy to
+re-brand if "devx" collides with something else for you.
+
+Works with a local Ollama model out of the box (no API key required), or with a hosted
+provider — DeepSeek, Claude, GPT, Grok, OpenRouter, or Kimi — via one environment
+variable. See [LLM providers](#llm-providers).
 
 ## Why ReAct-style prompting instead of native tool calling?
 
-Local models served via Ollama (DeepSeek included) don't reliably support
-OpenAI/Anthropic-style structured function calling. Instead, `devx` uses a
-strict text protocol the model must follow each turn:
+Local models served via Ollama don't reliably support OpenAI/Anthropic-style structured
+function calling, and using one text protocol for every provider keeps behavior identical
+regardless of which model is driving the agent. So SEA CLI uses a strict text protocol
+the model must follow each turn:
 
 ```
 Thought: <reasoning>
@@ -31,27 +39,93 @@ cap is hit.
 ## Setup
 
 ```bash
-# 1. Install & run Ollama, then pull a DeepSeek model
-ollama pull deepseek-coder-v2      # or deepseek-r1, deepseek-v2, etc.
-ollama serve                       # usually already running as a service
-
-# 2. Install devx
 cd devx-cli
 npm install
-npm run build
+npm run build      # also runs scripts/configure-bin.js — see "Renaming the CLI" below
 
-# Optional: link it globally so `devx` works from any project directory
+# Optional: link it globally so the command works from any project directory
 npm link
 ```
+
+Then either run a local model via Ollama, or point at a hosted provider:
+
+```bash
+# Local (default) — no API key needed
+ollama pull deepseek-coder-v2
+ollama serve
+
+# Hosted, e.g. Claude
+export DEVX_PROVIDER=claude
+export ANTHROPIC_API_KEY=sk-ant-...
+export DEVX_MODEL=claude-sonnet-4-5
+
+devx -chat "what does this project do?"
+```
+
+## Renaming the CLI
+
+The installed command name isn't hardcoded — it's read from `.env` at build time:
+
+```bash
+# .env
+CLI_COMMAND_NAME=devx
+```
+
+Change it (e.g. to avoid a name collision) and rebuild:
+
+```bash
+echo "CLI_COMMAND_NAME=sea" > .env
+npm run build     # scripts/configure-bin.js rewrites package.json's "bin" field
+                  # and regenerates src/generated/brand.ts from the new name
+npm link          # now installs as `sea` instead of `devx`
+```
+
+Everything that displays the command name — help text, log line prefixes, the state
+directory (`.<command>/history.md` / `.<command>/index.json`), `-version` — follows
+automatically; nothing else needs to change. Don't hand-edit `src/generated/brand.ts`,
+it's overwritten on every build.
+
+## LLM providers
+
+Set `DEVX_PROVIDER` to pick one (default: `ollama`):
+
+| Provider     | `DEVX_PROVIDER` | Default model         | API key env var (fallback for `DEVX_API_KEY`) |
+|--------------|------------------|------------------------|--------------------------------------------------|
+| Ollama       | `ollama`         | `deepseek-coder-v2`    | none — local server                              |
+| DeepSeek     | `deepseek`       | `deepseek-chat`        | `DEEPSEEK_API_KEY`                                |
+| Claude       | `claude`         | *(required, no default)* | `ANTHROPIC_API_KEY`                            |
+| OpenAI (GPT) | `openai`         | `gpt-4o-mini`          | `OPENAI_API_KEY`                                  |
+| Grok         | `grok`           | `grok-2-latest`        | `XAI_API_KEY` or `GROK_API_KEY`                   |
+| OpenRouter   | `openrouter`     | `openrouter/auto`      | `OPENROUTER_API_KEY`                              |
+| Kimi         | `kimi`           | `moonshot-v1-8k`       | `MOONSHOT_API_KEY` or `KIMI_API_KEY`              |
+
+Generic overrides work for **any** provider (useful for self-hosted/proxy endpoints,
+or to force a specific model):
+
+- `DEVX_MODEL` — model name
+- `DEVX_BASE_URL` — API base URL (Ollama-only default env var name is `DEVX_OLLAMA_URL`, also respected)
+- `DEVX_API_KEY` — API key, checked before the provider-specific env var above
+
+Claude requires `DEVX_MODEL` explicitly — Anthropic has no single implied default the
+way the other providers do. DeepSeek, OpenAI, Grok, OpenRouter, and Kimi are all
+OpenAI-compatible `/chat/completions` APIs handled by one shared client
+(`src/llm/openAiCompatibleClient.ts`); Claude uses Anthropic's distinct Messages API
+shape (`src/llm/claudeClient.ts`); Ollama uses its native `/api/chat` endpoint
+(`src/llm/ollamaClient.ts`). All three extend `src/llm/baseClient.ts`, which is where
+the shared request/response/`llm.log` logging logic lives.
 
 ## Configuration (environment variables)
 
 | Variable          | Default                    | Meaning                                |
 |-------------------|-----------------------------|-----------------------------------------|
+| `DEVX_PROVIDER`   | `ollama`                    | Which LLM provider to use — see above   |
+| `DEVX_MODEL`      | provider-specific            | Model name (required for `claude`)      |
+| `DEVX_BASE_URL`   | provider-specific            | API base URL override (any provider)    |
+| `DEVX_API_KEY`    | —                            | API key override (any provider)         |
 | `DEVX_OLLAMA_URL` | `http://localhost:11434`    | Ollama server base URL                  |
-| `DEVX_MODEL`      | `deepseek-coder-v2`         | Model name to use                       |
 | `DEVX_MAX_ITER`   | `15`                        | Max agent loop iterations               |
 | `DEVX_CWD`        | current directory           | Project directory the agent operates in |
+| `DEVX_LOG_FILE`   | `llm.log`                   | LLM payload/response log file name      |
 
 ## Usage
 
@@ -73,7 +147,14 @@ devx -doc blueprint
 devx -doc testsuite
 devx -predeploy "prepare for docker and local run"
 devx -predeploy
+devx -version
 ```
+
+### `-version`
+
+Prints the SEA CLI release version (from `package.json`, baked into
+`src/generated/brand.ts` at build time) along with the brand name and configured
+command name. No LLM call, no agent loop.
 
 ### `-predeploy`: make the workspace deployable
 
@@ -138,7 +219,9 @@ be a natural follow-up if this becomes a regular workflow.
 ### `-index`: build a workspace index
 
 Walks the project, summarizes each file (LLM-generated `summary` + `purpose`, falling
-back to a heuristic if the model call fails), and writes `.devx/index.json`:
+back to a heuristic if the model call fails), and writes `.devx/index.json` (the
+directory name follows whatever `CLI_COMMAND_NAME` is configured as — see
+[Renaming the CLI](#renaming-the-cli); it's `.devx` by default):
 
 ```json
 {
@@ -202,9 +285,16 @@ VM, especially with smaller/less aligned local models.
 ```
 src/
   types.ts                  Shared types (ChatMessage, ToolDefinition, etc.)
-  llm/ollamaClient.ts        Minimal Ollama /api/chat client, logs every exchange
-  index/indexManager.ts      Builds/loads/searches .devx/index.json
-  devxState/historyManager.ts Appends/reads structured entries in .devx/history.md
+  generated/brand.ts         GENERATED — command name / brand / version, from scripts/configure-bin.js
+  llm/
+    types.ts                 LlmClient interface implemented by every provider
+    baseClient.ts             Shared HTTP request/response/llm.log logging (BaseHttpLlmClient)
+    ollamaClient.ts           Ollama's native /api/chat
+    openAiCompatibleClient.ts Generic /chat/completions client (DeepSeek/OpenAI/Grok/OpenRouter/Kimi)
+    claudeClient.ts           Anthropic Messages API (/v1/messages)
+    factory.ts                Reads DEVX_PROVIDER + env vars, builds the right client
+  index/indexManager.ts      Builds/loads/searches .<cmd>/index.json
+  devxState/historyManager.ts Appends/reads structured entries in .<cmd>/history.md
   remote/
     types.ts                 SshTarget / RemoteAuth / RemoteConfig types
     sshConnection.ts         connect/execCommand/execScript (ssh2-based)
@@ -234,8 +324,12 @@ src/
     copyRemote.ts             runs the -copy upload directly (not an agent loop)
     predeploy.ts              builds the -predeploy task (Docker/local deployment readiness)
   cli/
-    parseArgs.ts             devx's -flag argument parser; excludes target/user/password/copy/remote from file-content resolution
-    index.ts                 entry point wiring CLI -> command -> orchestrator -> history
+    parseArgs.ts             -flag argument parser; excludes target/user/password/copy/remote from file-content resolution
+    index.ts                 entry point wiring CLI -> command -> orchestrator -> history; handles -version directly
+
+scripts/
+  configure-bin.js           prebuild step: .env CLI_COMMAND_NAME -> package.json "bin" + generated/brand.ts
+  add-version-headers.js     adds/refreshes the @version header comment on every src/**/*.ts file
 ```
 
 ## Notes / things to tune for your setup

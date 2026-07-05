@@ -1,18 +1,20 @@
 {
-  "name": "devx",
-  "version": "0.1.0",
-  "description": "Agentic DevX CLI powered by a local Ollama/DeepSeek model",
+  "name": "sea-cli",
+  "version": "0.2.0",
+  "description": "Software Engineer Agentic CLI (SEA CLI) — an agentic coding CLI supporting Ollama, DeepSeek, Claude, GPT, Grok, OpenRouter, and Kimi",
   "main": "dist/cli/index.js",
   "bin": {
     "devx": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "prebuild": "node scripts/configure-bin.js",
+    "build": "npm run prebuild && tsc -p .",
     "start": "ts-node src/cli/index.ts",
     "dev": "ts-node src/cli/index.ts"
   },
   "dependencies": {
     "glob": "^10.4.5",
+    "playwright": "^1.61.1",
     "ssh2": "^1.17.0"
   },
   "devDependencies": {

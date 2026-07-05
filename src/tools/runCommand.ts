@@ -1,3 +1,8 @@
+/**
+ * @file src/tools/runCommand.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { execFile } from "child_process";
 import { ToolDefinition, ToolResult } from "../types";
 

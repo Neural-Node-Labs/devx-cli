@@ -1,3 +1,8 @@
+/**
+ * @file src/remote/sshConnection.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { Client } from "ssh2";
 import { SshTarget } from "./types";
 

@@ -1,3 +1,8 @@
+/**
+ * @file src/commands/copyRemote.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import fs from "fs";
 import path from "path";
 import { ParsedCli } from "../cli/parseArgs";

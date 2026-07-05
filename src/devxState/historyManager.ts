@@ -1,3 +1,8 @@
+/**
+ * @file src/devxState/historyManager.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import fs from "fs";
 import path from "path";
 
@@ -14,7 +19,9 @@ export interface TaskHistoryEntry {
   summary: string;
 }
 
-const DEVX_DIR = ".devx";
+import { CLI_COMMAND_NAME } from "../generated/brand";
+
+const DEVX_DIR = `.${CLI_COMMAND_NAME}`;
 const HISTORY_FILE = "history.md";
 const META_REGEX = /<!--devx:meta\n([\s\S]*?)\n-->/g;
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env node
+/**
+ * @file src/cli/index.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { parseArgs, ParsedCli } from "./parseArgs";
-import { OllamaClient } from "../llm/ollamaClient";
+import { createLlmClient } from "../llm/factory";
 import { LlmLogger } from "../agent/llmLogger";
 import { runAgent } from "../agent/orchestrator";
 import { buildDesignTask } from "../commands/design";
@@ -18,23 +23,27 @@ import { runCopyCommand } from "../commands/copyRemote";
 import { parseTargets } from "../remote/sshConnection";
 import { RemoteConfig } from "../remote/types";
 import { appendHistoryEntry, getLastUnfinishedTask, TaskStatus } from "../devxState/historyManager";
+import { CLI_COMMAND_NAME, BRAND_NAME, BRAND_ABBREVIATION, VERSION } from "../generated/brand";
 
-const HELP = `devx — agentic DevX CLI (local Ollama/DeepSeek powered)
+const CMD = CLI_COMMAND_NAME;
+
+const HELP = `${BRAND_NAME} (${BRAND_ABBREVIATION}) — command: ${CMD} — v${VERSION}
 
 Usage:
-  devx -design [requirement.md] -architecture [architecture.md]
-  devx -implement [design.md] -component all
-  devx -implement [design.md] -component <name>
-  devx -fix [issue detail or filepath]
-  devx -refactor [refactor detail or filepath]
-  devx -test [detail or filepath] -component [name]
-  devx -chat [instruction or question]
-  devx -continue
-  devx -index
-  devx -ssh -task [instruction] -target [host1,host2] -user [user] -password [password]
-  devx -copy [local file or folder] -target [host1,host2] -user [user] -password [password] -remote [destPath]
-  devx -doc [readme|blueprint|scenario|testsuite|setup|testcase]
-  devx -predeploy [instruction]
+  ${CMD} -design [requirement.md] -architecture [architecture.md]
+  ${CMD} -implement [design.md] -component all
+  ${CMD} -implement [design.md] -component <name>
+  ${CMD} -fix [issue detail or filepath]
+  ${CMD} -refactor [refactor detail or filepath]
+  ${CMD} -test [detail or filepath] -component [name]
+  ${CMD} -chat [instruction or question]
+  ${CMD} -continue
+  ${CMD} -index
+  ${CMD} -ssh -task [instruction] -target [host1,host2] -user [user] -password [password]
+  ${CMD} -copy [local file or folder] -target [host1,host2] -user [user] -password [password] -remote [destPath]
+  ${CMD} -doc [readme|blueprint|scenario|testsuite|setup|testcase]
+  ${CMD} -predeploy [instruction]
+  ${CMD} -version
 
 -predeploy makes the workspace ready to run locally and/or in Docker: creates or fixes
 whatever's missing (Dockerfile, .dockerignore, docker-compose.yml, .env.example, etc.),
@@ -58,23 +67,28 @@ Remote commands (-ssh, -copy):
   (host or host:port), e.g. -target 203.0.113.5,203.0.113.6:2222
   -ssh routes through the full ReAct agent loop: the LLM inspects the local workspace,
   decides what to upload and which remote commands to run (via ssh_copy_tool /
-  ssh_run_command), and validates the result on the remote host itself — e.g.
-  "devx -ssh -task 'deploy the current workspace docker setup' -target host1,host2 ..."
+  ssh_run_command), and validates the result on the remote host itself.
   -copy is a direct utility with no LLM involved — it just uploads a file/folder.
   SECURITY NOTE: -password on the command line is visible in shell history and the
   process list. Prefer a scoped/temporary credential where possible.
 
 State kept in the project directory:
-  .devx/history.md    Summary + status of each task devx runs (not raw chat logs).
-                       "devx -continue" resumes the most recent unfinished entry.
-  .devx/index.json     Workspace file index built by "devx -index": filename, path,
+  .${CMD}/history.md    Summary + status of each task ${CMD} runs (not raw chat logs).
+                       "${CMD} -continue" resumes the most recent unfinished entry.
+  .${CMD}/index.json     Workspace file index built by "${CMD} -index": filename, path,
                        summary, and purpose per file. read_tool/write_tool consult this
                        first when a given path isn't found, before falling back to a
                        manual filesystem search.
 
-Environment variables:
-  DEVX_OLLAMA_URL     Ollama server base URL (default: http://localhost:11434)
-  DEVX_MODEL          Model name to use (default: deepseek-coder-v2)
+LLM provider (DEVX_PROVIDER, default "ollama"): ollama | deepseek | claude | openai | grok | openrouter | kimi
+  Generic overrides (work for any provider): DEVX_MODEL, DEVX_BASE_URL, DEVX_API_KEY
+  Provider-specific fallback API key env vars (used if DEVX_API_KEY isn't set):
+    deepseek   DEEPSEEK_API_KEY        openai     OPENAI_API_KEY
+    claude     ANTHROPIC_API_KEY       grok       XAI_API_KEY / GROK_API_KEY
+    openrouter OPENROUTER_API_KEY      kimi       MOONSHOT_API_KEY / KIMI_API_KEY
+  ollama-specific: DEVX_OLLAMA_URL (default http://localhost:11434)
+
+Other environment variables:
   DEVX_MAX_ITER       Max agent loop iterations (default: 15)
   DEVX_CWD            Project directory the agent operates in (default: cwd)
   DEVX_LOG_FILE       LLM payload/response log file name (default: llm.log)
@@ -119,7 +133,7 @@ function buildRequestPreview(parsed: ParsedCli): string {
 }
 
 function resultStatus(success: boolean, finalAnswer: string): TaskStatus {
-  if (!success && /failed to reach Ollama/i.test(finalAnswer)) return "error";
+  if (!success && /failed to reach (Ollama|the model provider)/i.test(finalAnswer)) return "error";
   return success ? "completed" : "incomplete";
 }
 
@@ -131,15 +145,19 @@ async function main() {
     return;
   }
 
+  if (argv.includes("-version") || argv.includes("--version")) {
+    console.log(`${BRAND_NAME} (${BRAND_ABBREVIATION}) v${VERSION} — command: ${CMD}`);
+    return;
+  }
+
   const parsed = parseArgs(argv);
   const cwd = process.env.DEVX_CWD || process.cwd();
-  const model = process.env.DEVX_MODEL || "deepseek-coder-v2";
-  const baseUrl = process.env.DEVX_OLLAMA_URL || "http://localhost:11434";
   const maxIterations = process.env.DEVX_MAX_ITER ? parseInt(process.env.DEVX_MAX_ITER, 10) : 15;
   const logFileName = process.env.DEVX_LOG_FILE || "llm.log";
 
   const logger = new LlmLogger(cwd, logFileName);
-  const llm = new OllamaClient({ model, baseUrl }, logger);
+  const llm = createLlmClient(logger);
+  const providerLabel = process.env.DEVX_PROVIDER || "ollama";
 
   // -index: a direct workspace scan, not an agent loop, and not logged to history.
   if (parsed.command === "index") {
@@ -176,11 +194,11 @@ async function main() {
   if (parsed.command === "continue") {
     const lastUnfinished = getLastUnfinishedTask(cwd);
     if (!lastUnfinished) {
-      console.log("devx: no unfinished task found in .devx/history.md — nothing to continue.");
+      console.log(`${CMD}: no unfinished task found in .${CMD}/history.md — nothing to continue.`);
       return;
     }
     console.log(
-      `devx: resuming unfinished "${lastUnfinished.command}" task from ${lastUnfinished.timestamp} ` +
+      `${CMD}: resuming unfinished "${lastUnfinished.command}" task from ${lastUnfinished.timestamp} ` +
         `(was ${lastUnfinished.status}, ${lastUnfinished.iterations} iteration(s) used)\n`
     );
     taskDescription = buildContinueTask(lastUnfinished);
@@ -232,9 +250,9 @@ async function main() {
     requestPreview = buildRequestPreview(parsed);
   }
 
-  console.log(`devx: running "${parsed.command}" with model "${model}" at ${baseUrl}`);
-  console.log(`devx: operating in ${cwd}`);
-  console.log(`devx: logging LLM payloads/responses to ${logger.getPath()}\n`);
+  console.log(`${CMD}: running "${parsed.command}" with provider "${providerLabel}"`);
+  console.log(`${CMD}: operating in ${cwd}`);
+  console.log(`${CMD}: logging LLM payloads/responses to ${logger.getPath()}\n`);
 
   const result = await runAgent(taskDescription, llm, { cwd, maxIterations, verbose: true, remoteConfig });
 
@@ -256,7 +274,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`devx: fatal error — ${err.message}`);
+  console.error(`${CLI_COMMAND_NAME}: fatal error — ${err.message}`);
   process.exit(1);
 });
-

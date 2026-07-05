@@ -1,3 +1,8 @@
+/**
+ * @file src/tools/indexLookup.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ToolDefinition, ToolResult } from "../types";
 import { loadIndex, searchIndex } from "../index/indexManager";
 

@@ -1,3 +1,8 @@
+/**
+ * @file src/agent/responseParser.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ParsedAction } from "../types";
 
 /**

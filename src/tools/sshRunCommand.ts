@@ -1,3 +1,8 @@
+/**
+ * @file src/tools/sshRunCommand.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { ToolDefinition, ToolResult } from "../types";
 import { RemoteConfig } from "../remote/types";
 import { connect, execCommand, execScript } from "../remote/sshConnection";

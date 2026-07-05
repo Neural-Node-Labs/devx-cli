@@ -1,3 +1,8 @@
+/**
+ * @file src/types.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { RemoteConfig } from "./remote/types";
 
 export interface ChatMessage {

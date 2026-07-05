@@ -1,7 +1,12 @@
+/**
+ * @file src/index/indexManager.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import fs from "fs";
 import path from "path";
 import { walkFiles } from "../utils/fileWalker";
-import { OllamaClient } from "../llm/ollamaClient";
+import { LlmClient } from "../llm/types";
 
 export interface IndexedFile {
   filename: string;
@@ -17,7 +22,9 @@ export interface WorkspaceIndex {
   files: IndexedFile[];
 }
 
-const DEVX_DIR = ".devx";
+import { CLI_COMMAND_NAME } from "../generated/brand";
+
+const DEVX_DIR = `.${CLI_COMMAND_NAME}`;
 const INDEX_FILE = "index.json";
 
 // Skip binary/asset extensions — not worth summarizing, and risk garbling the LLM prompt.
@@ -60,7 +67,7 @@ function heuristicSummary(relPath: string, content: string): { summary: string; 
 }
 
 async function summarizeFile(
-  llm: OllamaClient,
+  llm: LlmClient,
   relPath: string,
   content: string
 ): Promise<{ summary: string; purpose: string }> {
@@ -99,7 +106,7 @@ export interface BuildIndexOptions {
 
 export async function buildIndex(
   cwd: string,
-  llm: OllamaClient,
+  llm: LlmClient,
   options: BuildIndexOptions = {}
 ): Promise<WorkspaceIndex> {
   const maxFiles = options.maxFiles ?? MAX_FILES_DEFAULT;

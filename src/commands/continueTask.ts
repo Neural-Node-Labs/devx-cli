@@ -1,3 +1,8 @@
+/**
+ * @file src/commands/continueTask.ts
+ * @version 0.2.0
+ * @sea-cli-instruction Increment @version above whenever this file is modified.
+ */
 import { TaskHistoryEntry } from "../devxState/historyManager";
 
 /**
