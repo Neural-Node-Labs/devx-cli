@@ -16,6 +16,7 @@ export function buildSystemPrompt(
   taskDescription: string,
   options: { remoteTargets?: string[] } = {}
 ): string {
+  const platform = process.platform;
   const toolList = renderToolsForPrompt(tools);
   const remoteSection = options.remoteTargets?.length
     ? `\nREMOTE DEPLOYMENT TARGETS: ${options.remoteTargets.join(", ")}\n` +
@@ -45,6 +46,8 @@ Thought: <why the task is now complete>
 Final Answer: <a concise summary of what was done, including files changed and validation results>
 
 RULES:
+- OS: ${platform}
+- IMPORTANT: Follow the response format exactly. The orchestrator will parse your reply and act on it. If you deviate, the orchestrator may fail to understand you.
 - Only ever emit ONE Thought/Action/Action Input block, or ONE Thought/Final Answer block, per turn. Never both.
 - Action Input must be raw JSON on a single line (or pretty JSON), with no markdown code fences.
 - Always validate your work: after writing or editing code, use run_command to run tests/build/lint before declaring Final Answer.
