@@ -41,6 +41,7 @@ cap is hit.
 ```bash
 cd devx-cli
 npm install
+npm test           # regression suite — parsing + prompt construction, no LLM/network needed
 npm run build      # also runs scripts/configure-bin.js — see "Renaming the CLI" below
 
 # Optional: link it globally so the command works from any project directory
@@ -329,7 +330,14 @@ src/
 
 scripts/
   configure-bin.js           prebuild step: .env CLI_COMMAND_NAME -> package.json "bin" + generated/brand.ts
-  add-version-headers.js     adds/refreshes the @version header comment on every src/**/*.ts file
+  add-version-headers.js     adds/refreshes the @version header comment on every src/**/*.ts and test-suite/**/*.ts file
+
+test-suite/
+  One regression test file per CLI parameter (design/implement/fix/refactor/test/chat/
+  continue/index/ssh/copy/doc/predeploy/version), plus shared-parsing.test.ts for
+  cross-cutting parser behavior. Run with `npm test`. See test-suite/README.md for details
+  on what is/isn't covered (parsing + prompt construction + local state logic; not a live
+  LLM/SSH end-to-end run).
 ```
 
 ## Notes / things to tune for your setup

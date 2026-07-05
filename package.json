@@ -10,7 +10,8 @@
     "prebuild": "node scripts/configure-bin.js",
     "build": "npm run prebuild && tsc -p .",
     "start": "ts-node src/cli/index.ts",
-    "dev": "ts-node src/cli/index.ts"
+    "dev": "ts-node src/cli/index.ts",
+    "test": "node -r ts-node/register --test test-suite/*.test.ts"
   },
   "dependencies": {
     "glob": "^10.4.5",

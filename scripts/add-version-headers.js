@@ -16,6 +16,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const SRC_DIR = path.join(ROOT, "src");
+const TEST_SUITE_DIR = path.join(ROOT, "test-suite");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
 const VERSION = pkg.version;
 
@@ -48,7 +49,7 @@ function stripExistingHeader(content) {
 
 const SHEBANG_REGEX = /^#!.*\n/;
 
-const files = walk(SRC_DIR);
+const files = [...walk(SRC_DIR), ...(fs.existsSync(TEST_SUITE_DIR) ? walk(TEST_SUITE_DIR) : [])];
 let updated = 0;
 
 for (const file of files) {
