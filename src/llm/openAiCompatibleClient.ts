@@ -1,6 +1,6 @@
 /**
  * @file src/llm/openAiCompatibleClient.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import { ChatMessage } from "../types";
@@ -36,7 +36,7 @@ export class OpenAiCompatibleClient extends BaseHttpLlmClient {
     this.baseUrl = baseUrl;
     this.apiKey = options.apiKey;
     this.model = options.model;
-    this.temperature = options.temperature ?? 0.2;
+    this.temperature = options.temperature ?? 0.1;
     this.extraHeaders = options.extraHeaders ?? {};
   }
 

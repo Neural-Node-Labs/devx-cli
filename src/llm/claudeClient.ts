@@ -37,7 +37,7 @@ export class ClaudeClient extends BaseHttpLlmClient {
     this.baseUrl = baseUrl;
     this.apiKey = options.apiKey;
     this.model = options.model;
-    this.temperature = options.temperature ?? 0.2;
+    this.temperature = options.temperature ?? 0.1;
     this.maxTokens = options.maxTokens ?? 4096;
   }
 

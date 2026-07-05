@@ -23,7 +23,7 @@ export class OllamaClient extends BaseHttpLlmClient {
     super(options.model, baseUrl, logger);
     this.model = options.model;
     this.baseUrl = baseUrl;
-    this.temperature = options.temperature ?? 0.2;
+    this.temperature = options.temperature ?? 0.1;
   }
 
   protected buildRequest(messages: ChatMessage[]): HttpRequestSpec {
