@@ -1,6 +1,6 @@
 /**
  * @file src/index/indexManager.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import fs from "fs";
@@ -24,8 +24,16 @@ export interface WorkspaceIndex {
 
 import { CLI_COMMAND_NAME } from "../generated/brand";
 
+const INCLUDE_SUMMARY = false; // Set to false to skip LLM summarization and only store filename/path in the index.
+
 const DEVX_DIR = `.${CLI_COMMAND_NAME}`;
 const INDEX_FILE = "index.json";
+const DUMP_FILE = "index.dump";
+
+// Separator written before each file's content in the dump file.
+function dumpHeader(relPath: string): string {
+  return `\n${"=".repeat(80)}\nFILE: ${relPath}\n${"=".repeat(80)}\n`;
+}
 
 // Skip binary/asset extensions — not worth summarizing, and risk garbling the LLM prompt.
 const SKIP_EXTENSIONS = new Set([
@@ -34,7 +42,7 @@ const SKIP_EXTENSIONS = new Set([
   ".zip", ".tar", ".gz", ".7z",
   ".lock", ".map",
   ".mp3", ".mp4", ".mov", ".avi",
-  ".pdf",
+  ".pdf",".env"
 ]);
 
 const MAX_FILES_DEFAULT = 300;
@@ -42,6 +50,10 @@ const MAX_CONTENT_CHARS = 3000;
 
 export function getIndexPath(cwd: string): string {
   return path.join(cwd, DEVX_DIR, INDEX_FILE);
+}
+
+export function getDumpPath(cwd: string): string {
+  return path.join(cwd, DEVX_DIR, DUMP_FILE);
 }
 
 export function loadIndex(cwd: string): WorkspaceIndex | null {
@@ -102,6 +114,8 @@ ${truncated}`;
 export interface BuildIndexOptions {
   maxFiles?: number;
   onProgress?: (current: number, total: number, relPath: string) => void;
+  /** When true, also write the raw content of every indexed file to `.${cli}/index.dump`. */
+  dumpContent?: boolean;
 }
 
 export async function buildIndex(
@@ -117,6 +131,16 @@ export async function buildIndex(
     .slice(0, maxFiles);
 
   const files: IndexedFile[] = [];
+
+  const dumpContent = options.dumpContent ?? true;
+  const dumpPath = getDumpPath(cwd);
+  if (dumpContent) {
+    // Truncate/create the dump file up front; content is appended per-file below
+    // rather than buffered in memory, since indexed repos can be large.
+    const devxDir = path.join(cwd, DEVX_DIR);
+    fs.mkdirSync(devxDir, { recursive: true });
+    fs.writeFileSync(dumpPath, "", "utf-8");
+  }
 
   for (let i = 0; i < allFiles.length; i++) {
     const relPath = allFiles[i].split(path.sep).join("/");
@@ -134,11 +158,23 @@ export async function buildIndex(
         summary: "(binary or unreadable file)",
         purpose: "Unknown — content could not be read as text.",
       });
+      if (dumpContent) {
+        fs.appendFileSync(dumpPath, dumpHeader(relPath) + "(binary or unreadable file — content omitted)\n", "utf-8");
+      }
       continue;
     }
 
-    const { summary, purpose } = await summarizeFile(llm, relPath, content);
-    files.push({ filename: path.basename(relPath), path: relPath, summary, purpose });
+    if (dumpContent) {
+      fs.appendFileSync(dumpPath, dumpHeader(relPath) + content + (content.endsWith("\n") ? "" : "\n"), "utf-8");
+    }
+
+    if (INCLUDE_SUMMARY) {
+        const { summary, purpose } = await summarizeFile(llm, relPath, content);
+        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose });
+        } else {
+        const { summary, purpose } = heuristicSummary(relPath, content);
+        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose });
+    }
   }
 
   const index: WorkspaceIndex = {
