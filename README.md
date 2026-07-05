@@ -55,7 +55,13 @@ Then either run a local model via Ollama, or point at a hosted provider:
 ollama pull deepseek-coder-v2
 ollama serve
 
-# Hosted, e.g. Claude
+# Hosted, e.g. Claude , .env must be in the workspace
+DEVX_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+DEVX_MODEL=claude-sonnet-4-5
+
+# Export in your environment or put in a `.env` file in the workspace:
+
 export DEVX_PROVIDER=claude
 export ANTHROPIC_API_KEY=sk-ant-...
 export DEVX_MODEL=claude-sonnet-4-5

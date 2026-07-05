@@ -3,12 +3,16 @@
  * @version 0.2.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
+import * as dotenv from "dotenv";
+import * as path from "path";
 import { LlmClient } from "./types";
 import { LlmLogger } from "../agent/llmLogger";
 import { OllamaClient } from "./ollamaClient";
 import { OpenAiCompatibleClient } from "./openAiCompatibleClient";
 import { ClaudeClient } from "./claudeClient";
 import { BRAND_NAME } from "../generated/brand";
+
+dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 export const SUPPORTED_PROVIDERS = ["ollama", "deepseek", "claude", "openai", "grok", "openrouter", "kimi"] as const;
 export type LlmProvider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -42,12 +46,15 @@ export function createLlmClient(logger?: LlmLogger): LlmClient {
   const apiKeyOverride = process.env.DEVX_API_KEY;
 
   switch (provider) {
+
+
     case "ollama": {
       const baseUrl = baseUrlOverride || process.env.DEVX_OLLAMA_URL || "http://localhost:11434";
       return new OllamaClient({ model: modelOverride || "deepseek-coder-v2", baseUrl }, logger);
     }
 
     case "deepseek": {
+
       const apiKey = apiKeyOverride || requireApiKey("deepseek", ["DEEPSEEK_API_KEY", "DEVX_API_KEY"]);
       const baseUrl = baseUrlOverride || "https://api.deepseek.com";
       return new OpenAiCompatibleClient(

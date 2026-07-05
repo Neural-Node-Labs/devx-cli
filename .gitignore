@@ -1,1 +1,4 @@
 /.idea/
+/workspace/
+/node_modules/
+/dist/
