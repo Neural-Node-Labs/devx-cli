@@ -1,6 +1,6 @@
 /**
  * @file src/tools/registry.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import { ToolDefinition } from "../types";
@@ -10,6 +10,7 @@ import { createReadTool } from "./read";
 import { createWriteTool } from "./write";
 import { createRunCommandTool } from "./runCommand";
 import { createIndexLookupTool } from "./indexLookup";
+import { createDumpReadTool } from "./dumpReader";
 import { createSshRunCommandTool } from "./sshRunCommand";
 import { createSshCopyTool } from "./sshCopy";
 import { RemoteConfig } from "../remote/types";
@@ -17,6 +18,7 @@ import { RemoteConfig } from "../remote/types";
 export function buildToolRegistry(cwd: string, remoteConfig?: RemoteConfig): Map<string, ToolDefinition> {
   const tools: ToolDefinition[] = [
     createIndexLookupTool(cwd),
+    createDumpReadTool(cwd),
     createGlobTool(cwd),
     createGrepTool(cwd),
     createReadTool(cwd),

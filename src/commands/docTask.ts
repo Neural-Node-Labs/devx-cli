@@ -1,6 +1,6 @@
 /**
  * @file src/commands/docTask.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import { ParsedCli } from "../cli/parseArgs";
@@ -9,9 +9,30 @@ export const DOC_TYPES = ["readme", "blueprint", "scenario", "testsuite", "setup
 export type DocType = (typeof DOC_TYPES)[number];
 
 const GROUNDING_RULE =
-  "Base every claim strictly on what you actually find in the codebase (index_lookup_tool/glob_tool/" +
-  "grep_tool/read_tool) — never invent features, dependencies, scripts, or commands that don't exist. " +
-  "If something is genuinely unclear from the code, say so explicitly rather than guessing.";
+  "Base every claim strictly on what you actually find in the codebase — never invent features, " +
+  "dependencies, scripts, or commands that don't exist. If something is genuinely unclear from the " +
+  "code, say so explicitly rather than guessing. Never copy actual secret/credential values (API keys, " +
+  "passwords, tokens, connection strings) from any file's content into the documents you write — refer " +
+  "to the variable/setting name only (e.g. \"requires DEEPSEEK_API_KEY to be set\"), never its value.";
+
+// Shared "digest first" step prepended to every doc type's instructions. Reading the whole workspace
+// through the precomputed dump up front — once, completely — replaces the old approach of paging through
+// .devx/index.dump in raw line windows (which routinely split file boundaries and produced incomplete or
+// garbled context). Once digested this way, it is treated as authoritative and no further exploration is
+// needed; write_tool/run_command afterward are for producing and validating output, not exploration.
+const DIGEST_STEP = `1. DIGEST THE WORKSPACE:
+   a. Call dump_read_tool with { "mode": "list" }.
+   b. If it reports no dump exists, skip to step 2 and instead use index_lookup_tool/glob_tool/grep_tool/
+      read_tool to explore the project directly.
+   c. If a dump exists, call dump_read_tool with { "mode": "read", "path": "<path>" } once for every file
+      path it listed that's relevant to this task — for a whole-project document that means essentially
+      every source/config file; you can skip lockfiles, build output, and binary/asset paths.
+   d. Once every relevant entry has been read this way, treat that content as your COMPLETE and
+      AUTHORITATIVE picture of the current workspace for the rest of this task. Do NOT call
+      index_lookup_tool/glob_tool/grep_tool/read_tool afterward to "double check" something already in
+      the digested content — the dump reflects the workspace as of the last index run and re-exploring it
+      wastes iterations. Only fall back to those tools for something the dump genuinely doesn't cover
+      (e.g. it's stale, or a file was excluded from indexing).`;
 
 /**
  * devx -doc [readme|blueprint|scenario|testsuite|setup|testcase]
@@ -46,13 +67,12 @@ function buildReadmeTask(): string {
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Check if .devx/index.dump exists. use read_tool to to get all files content. IMPORTANT: this file is too large to read in one go, so you must read it in chunks of 1000 lines or less. If the file is too large to read in one go, you must read it in chunks of 1000 lines or less. You can use the "startLine" and "endLine" parameters to specify the range of lines to read. For example, to read lines 1-1000, use { "path": ".devx/index.dump", "startLine": 1, "endLine": 1000 }. To read lines 1001-2000, use { "path": ".devx/index.dump", "startLine": 1001, "endLine": 2000 }, and so on. You can also use grep_tool to search for specific keywords in the index dump.
-2. If .devx/index.dump doesn't exist, use glob_tool and grep_tool to explore the project structure and identify key files (package.json, pyproject.toml, go.mod, etc.), entry points (main scripts, CLI commands, API routes), and any existing documentation (docs/, design.md, etc.). Read relevant files with read_tool to understand the project's purpose, features, and usage.
-3. Write README.md at the project root (write_tool) covering: a clear project summary, key features,
+${DIGEST_STEP}
+2. Write README.md at the project root (write_tool) covering: a clear project summary, key features,
    prerequisites, install/setup steps, how to run it, how to run its tests, a brief project structure
    overview, and a contributing section if there's evidence this is a collaborative project.
-4. Re-read the file back with read_tool to confirm it saved correctly and renders as well-formed markdown.
-5. Give a Final Answer summarizing what the README now covers and noting anything you couldn't verify.`;
+3. Re-read the file back with read_tool to confirm it saved correctly and renders as well-formed markdown.
+4. Give a Final Answer summarizing what the README now covers and noting anything you couldn't verify.`;
 }
 
 function buildBlueprintTask(): string {
@@ -61,12 +81,11 @@ function buildBlueprintTask(): string {
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Explore the workspace's actual architecture: main modules/components and their responsibilities, how
-   they interact (imports/calls between files — use grep_tool to trace real dependencies, not assumptions),
-   data models/interfaces, external integrations (databases, APIs, queues), and entry points.
+${DIGEST_STEP}
 2. Write docs/BLUEPRINT.md (write_tool) covering:
    - System overview (what it is, one paragraph)
    - Component breakdown: each major module, its responsibility, and what it depends on / is depended on by
+     (trace real imports/calls you saw in the digested content — don't assume)
    - Data flow: how a typical request/operation moves through the system
    - Key design decisions evident from the code, and any risks or inconsistencies you noticed
    - Suggested areas for improvement, if any stood out (clearly labeled as suggestions, not existing behavior)
@@ -82,10 +101,7 @@ ${GROUNDING_RULE} Where the business context genuinely isn't derivable from the 
 exact business goals), say so explicitly rather than fabricating specifics.
 
 INSTRUCTIONS:
-1. Explore the workspace for evidence of business intent: domain terminology in code/comments, existing
-   requirement or design docs (design.md, docs/*, README, etc.), user-facing strings, API routes/endpoints
-   that hint at what users can do, and any config suggesting the target environment (e.g. multi-tenant,
-   payments, internal tool).
+${DIGEST_STEP}
 2. Write docs/SCENARIO.md (write_tool) covering:
    - The apparent business problem this project solves (based on evidence, with a note on confidence)
    - Likely user personas / actors and what they do with the system
@@ -102,19 +118,19 @@ function buildTestsuiteTask(): string {
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Use index_lookup_tool/glob_tool to enumerate the workspace's source modules, and grep_tool/read_tool to
-   identify what test framework and conventions (if any) already exist (jest/vitest/mocha/pytest/etc.,
-   existing *.test.*/*.spec.* files, config files).
-2. For each significant module lacking adequate test coverage, write a test file (write_tool, "overwrite"
+${DIGEST_STEP}
+2. From the digested content, identify what test framework and conventions (if any) already exist
+   (jest/vitest/mocha/pytest/etc., existing *.test.*/*.spec.* files, config files).
+3. For each significant module lacking adequate test coverage, write a test file (write_tool, "overwrite"
    for new files) following the project's existing framework and naming conventions. If no framework exists,
    default to a zero-dependency approach appropriate to the language (e.g. Node's built-in "node:test" for
    JS/TS). Cover happy path, edge cases, and error handling per module — don't just write one trivial test.
-3. Run the full test suite with run_command after writing the tests. Fix failures in the NEW tests you wrote
+4. Run the full test suite with run_command after writing the tests. Fix failures in the NEW tests you wrote
    (not the source code) unless a test reveals a genuine pre-existing bug — in that case, leave the test
    correct and report the bug rather than hiding it by writing a weaker test.
-4. Write docs/TESTSUITE.md (write_tool) summarizing: which modules now have tests, what each test file
-   covers, how to run the full suite, and the actual run_command output from step 3.
-5. Give a Final Answer listing every test file created/modified, overall pass/fail status, and any known
+5. Write docs/TESTSUITE.md (write_tool) summarizing: which modules now have tests, what each test file
+   covers, how to run the full suite, and the actual run_command output from step 4.
+6. Give a Final Answer listing every test file created/modified, overall pass/fail status, and any known
    gaps in coverage you didn't have time/information to close.`;
 }
 
@@ -124,17 +140,18 @@ function buildSetupTask(): string {
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Determine the actual prerequisites: language/runtime + version (check .nvmrc, engines field, go.mod,
-   pyproject.toml, etc.), package manager, required services (database, cache, message queue — check
-   docker-compose.yml / config / env references), and any required environment variables (check .env.example,
-   config loading code, or README).
-2. Determine the actual commands to install dependencies, build, run in development, run tests, and run in
-   production, by reading package.json scripts / Makefile / justfile / CI config — whichever exists. If a
-   command doesn't actually exist in the project, do not invent one.
+${DIGEST_STEP}
+2. From the digested content, determine the actual prerequisites (language/runtime + version, package
+   manager, required services such as a database/cache/queue, required environment variables — check
+   .env.example, config-loading code, docker-compose files, etc.) and the actual commands to install
+   dependencies, build, run in development, run tests, and run in production (from package.json scripts /
+   Makefile / justfile / CI config — whichever exists). If a command doesn't actually exist in the project,
+   do not invent one.
 3. If genuinely helpful and verifiable, try running the install step with run_command to confirm the command
    as documented actually works (skip if it would be destructive, slow, or require credentials you don't have).
 4. Write docs/SETUP.md (write_tool) with numbered steps: prerequisites, installation, configuration
-   (env vars/config files), running locally, running tests, and troubleshooting notes for anything you hit.
+   (env vars/config files — names only, never values), running locally, running tests, and troubleshooting
+   notes for anything you hit.
 5. Give a Final Answer summarizing the setup steps and noting anything you couldn't verify by actually running it.`;
 }
 
@@ -145,8 +162,7 @@ human-readable list of test cases covering its functionality.
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Explore the workspace to identify its major features/behaviors (via source code, routes/endpoints,
-   CLI commands, public functions — whatever the project actually exposes).
+${DIGEST_STEP}
 2. Write docs/TESTCASES.md (write_tool) as a structured list. For each test case include:
    - ID (e.g. TC-001)
    - Title

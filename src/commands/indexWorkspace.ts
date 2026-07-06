@@ -1,6 +1,6 @@
 /**
  * @file src/commands/indexWorkspace.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import { LlmClient } from "../llm/types";
@@ -22,5 +22,10 @@ export async function runIndexCommand(cwd: string, llm: LlmClient): Promise<void
   });
 
   console.log(`\n\nIndexed ${index.fileCount} files.`);
+  if (index.ignoreFilesUsed?.length) {
+    console.log(`Respected: ${index.ignoreFilesUsed.join(", ")} (skipped ${index.ignoredCount ?? 0} entries).`);
+  } else if (index.ignoredCount) {
+    console.log(`Skipped ${index.ignoredCount} entries (default-ignored dirs; no .gitignore/.dockerignore/.devxignore found).`);
+  }
   console.log(`Saved to ${getIndexPath(cwd)}`);
 }

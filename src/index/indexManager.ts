@@ -1,11 +1,11 @@
 /**
  * @file src/index/indexManager.ts
- * @version 0.3.0
+ * @version 0.6.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import fs from "fs";
 import path from "path";
-import { walkFiles } from "../utils/fileWalker";
+import { walkFiles, getIgnoreFilesPresent } from "../utils/fileWalker";
 import { LlmClient } from "../llm/types";
 
 export interface IndexedFile {
@@ -13,6 +13,10 @@ export interface IndexedFile {
   path: string; // relative to project root, forward-slash normalized
   summary: string; // what's in the file
   purpose: string; // why it exists / its role in the project
+  /** Basename of the dump part file holding this file's full content (e.g. "index.2.dump"). Absent if dumping was disabled. */
+  dumpPart?: string;
+  /** Line count of this file's content as written to the dump. Absent if dumping was disabled. */
+  dumpLineCount?: number;
 }
 
 export interface WorkspaceIndex {
@@ -20,6 +24,14 @@ export interface WorkspaceIndex {
   root: string;
   fileCount: number;
   files: IndexedFile[];
+  /** Dump part basenames in write order, e.g. ["index.1.dump", "index.2.dump"]. Absent if dumping was disabled. */
+  dumpParts?: string[];
+  /** The DEVX_DUMP_MAX_BYTES cap in effect when dumpParts was built, kept for reference/debugging. */
+  dumpMaxBytesPerPart?: number;
+  /** Which ignore files (.gitignore / .dockerignore / .<cmd>ignore) were found at the root and respected. */
+  ignoreFilesUsed?: string[];
+  /** Number of files/directories pruned from the walk by DEFAULT_IGNORE or an ignore-file rule. */
+  ignoredCount?: number;
 }
 
 import { CLI_COMMAND_NAME } from "../generated/brand";
@@ -28,7 +40,17 @@ const INCLUDE_SUMMARY = false; // Set to false to skip LLM summarization and onl
 
 const DEVX_DIR = `.${CLI_COMMAND_NAME}`;
 const INDEX_FILE = "index.json";
-const DUMP_FILE = "index.dump";
+// Legacy pre-split dump filename, and legacy separate-manifest filename — no longer written,
+// but still read/cleaned up for backward compatibility with a .devx dir built by an older
+// version of this tool.
+const LEGACY_DUMP_FILE = "index.dump";
+const LEGACY_MANIFEST_FILE = "index.dump.manifest.json";
+const DUMP_PART_RE = /^index\.\d+\.dump$/;
+
+// Default cap on each dump part file's size. Overridable per-run via the
+// DEVX_DUMP_MAX_BYTES env var (in bytes) — lower it if a single dump file is too
+// large for the LLM/tooling to handle comfortably, raise it to produce fewer parts.
+const DEFAULT_MAX_DUMP_BYTES = .5 * 1024 * 1024; // 500 kB
 
 // Separator written before each file's content in the dump file.
 function dumpHeader(relPath: string): string {
@@ -52,8 +74,24 @@ export function getIndexPath(cwd: string): string {
   return path.join(cwd, DEVX_DIR, INDEX_FILE);
 }
 
+export function getDevxDir(cwd: string): string {
+  return path.join(cwd, DEVX_DIR);
+}
+
+/** Legacy single-file dump path. Only used as a read-time fallback; buildIndex no longer writes here. */
 export function getDumpPath(cwd: string): string {
-  return path.join(cwd, DEVX_DIR, DUMP_FILE);
+  return path.join(cwd, DEVX_DIR, LEGACY_DUMP_FILE);
+}
+
+export function getDumpPartPath(cwd: string, partNumber: number): string {
+  return path.join(cwd, DEVX_DIR, `index.${partNumber}.dump`);
+}
+
+/** Resolves the configured max size (bytes) for a single dump part, from DEVX_DUMP_MAX_BYTES or the default. */
+export function getMaxDumpBytesPerPart(): number {
+  const raw = process.env.DEVX_DUMP_MAX_BYTES;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_DUMP_BYTES;
 }
 
 export function loadIndex(cwd: string): WorkspaceIndex | null {
@@ -66,6 +104,28 @@ export function loadIndex(cwd: string): WorkspaceIndex | null {
     return null;
   } catch {
     return null;
+  }
+}
+
+// Removes dump artifacts from a previous run (legacy single file, numbered parts, and the
+// now-retired separate manifest file) before writing a fresh set — otherwise a re-index that
+// produces fewer parts would leave stale, unreferenced part files behind.
+function clearOldDumpArtifacts(cwd: string): void {
+  const devxDir = getDevxDir(cwd);
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(devxDir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (name === LEGACY_DUMP_FILE || name === LEGACY_MANIFEST_FILE || DUMP_PART_RE.test(name)) {
+      try {
+        fs.unlinkSync(path.join(devxDir, name));
+      } catch {
+        // best-effort cleanup; a failure here shouldn't abort the index build
+      }
+    }
   }
 }
 
@@ -114,8 +174,62 @@ ${truncated}`;
 export interface BuildIndexOptions {
   maxFiles?: number;
   onProgress?: (current: number, total: number, relPath: string) => void;
-  /** When true, also write the raw content of every indexed file to `.${cli}/index.dump`. */
+  /** When true, also write the raw content of every indexed file to `.${cli}/index.*.dump`. */
   dumpContent?: boolean;
+  /** Overrides DEVX_DUMP_MAX_BYTES for this run (mainly useful for tests). */
+  maxDumpBytesPerPart?: number;
+}
+
+/**
+ * Incrementally appends dump entries across size-capped part files, rolling over to a new
+ * part whenever the next entry would push the current one past maxBytesPerPart. A single
+ * file's content is never split across two parts — if one file's own content already
+ * exceeds the cap, it simply becomes the sole (oversized) occupant of its part.
+ */
+class DumpWriter {
+  private partNumber = 1;
+  private currentPartBytes = 0;
+  private currentPartStarted = false;
+  private readonly partsUsed: string[] = [];
+
+  constructor(private readonly cwd: string, private readonly maxBytesPerPart: number) {}
+
+  private currentPartPath(): string {
+    return getDumpPartPath(this.cwd, this.partNumber);
+  }
+
+  private ensureCurrentPartFile(): string {
+    const partPath = this.currentPartPath();
+    const baseName = path.basename(partPath);
+    if (!this.partsUsed.includes(baseName)) {
+      fs.writeFileSync(partPath, "", "utf-8");
+      this.partsUsed.push(baseName);
+    }
+    return partPath;
+  }
+
+  /** Appends one file's dump entry (header + body), rolling over to a new part if needed. Returns the part's basename. */
+  append(relPath: string, body: string): string {
+    const entryText = dumpHeader(relPath) + body;
+    const entryBytes = Buffer.byteLength(entryText, "utf-8");
+
+    if (this.currentPartStarted && this.currentPartBytes > 0 && this.currentPartBytes + entryBytes > this.maxBytesPerPart) {
+      this.partNumber++;
+      this.currentPartBytes = 0;
+      this.currentPartStarted = false;
+    }
+
+    const partPath = this.ensureCurrentPartFile();
+    this.currentPartStarted = true;
+    fs.appendFileSync(partPath, entryText, "utf-8");
+    this.currentPartBytes += entryBytes;
+
+    return path.basename(partPath);
+  }
+
+  parts(): string[] {
+    return [...this.partsUsed];
+  }
 }
 
 export async function buildIndex(
@@ -125,7 +239,9 @@ export async function buildIndex(
 ): Promise<WorkspaceIndex> {
   const maxFiles = options.maxFiles ?? MAX_FILES_DEFAULT;
 
-  const allFiles = walkFiles(cwd)
+  const ignoreFilesUsed = getIgnoreFilesPresent(cwd);
+  let ignoredCount = 0;
+  const allFiles = walkFiles(cwd, { onIgnored: () => { ignoredCount++; } })
     .map((f) => path.relative(cwd, f))
     .filter((relPath) => !SKIP_EXTENSIONS.has(path.extname(relPath).toLowerCase()))
     .slice(0, maxFiles);
@@ -133,13 +249,16 @@ export async function buildIndex(
   const files: IndexedFile[] = [];
 
   const dumpContent = options.dumpContent ?? true;
-  const dumpPath = getDumpPath(cwd);
+  const maxDumpBytesPerPart = options.maxDumpBytesPerPart ?? getMaxDumpBytesPerPart();
+  const devxDir = getDevxDir(cwd);
+  let dumpWriter: DumpWriter | null = null;
+
   if (dumpContent) {
-    // Truncate/create the dump file up front; content is appended per-file below
-    // rather than buffered in memory, since indexed repos can be large.
-    const devxDir = path.join(cwd, DEVX_DIR);
     fs.mkdirSync(devxDir, { recursive: true });
-    fs.writeFileSync(dumpPath, "", "utf-8");
+    // Clear any dump artifacts from a previous run before writing fresh ones, so a re-index
+    // that produces fewer parts doesn't leave stale, unreferenced part files behind.
+    clearOldDumpArtifacts(cwd);
+    dumpWriter = new DumpWriter(cwd, maxDumpBytesPerPart);
   }
 
   for (let i = 0; i < allFiles.length; i++) {
@@ -152,28 +271,34 @@ export async function buildIndex(
       content = fs.readFileSync(fullPath, "utf-8");
     } catch {
       // Unreadable (likely binary) — index it with a minimal placeholder rather than skipping silently.
-      files.push({
+      const entry: IndexedFile = {
         filename: path.basename(relPath),
         path: relPath,
         summary: "(binary or unreadable file)",
         purpose: "Unknown — content could not be read as text.",
-      });
-      if (dumpContent) {
-        fs.appendFileSync(dumpPath, dumpHeader(relPath) + "(binary or unreadable file — content omitted)\n", "utf-8");
+      };
+      if (dumpWriter) {
+        entry.dumpPart = dumpWriter.append(relPath, "(binary or unreadable file — content omitted)\n");
+        entry.dumpLineCount = 0;
       }
+      files.push(entry);
       continue;
     }
 
-    if (dumpContent) {
-      fs.appendFileSync(dumpPath, dumpHeader(relPath) + content + (content.endsWith("\n") ? "" : "\n"), "utf-8");
+    let dumpPart: string | undefined;
+    let dumpLineCount: number | undefined;
+    if (dumpWriter) {
+      const body = content + (content.endsWith("\n") ? "" : "\n");
+      dumpPart = dumpWriter.append(relPath, body);
+      dumpLineCount = content ? content.split("\n").length : 0;
     }
 
     if (INCLUDE_SUMMARY) {
         const { summary, purpose } = await summarizeFile(llm, relPath, content);
-        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose });
+        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose, dumpPart, dumpLineCount });
         } else {
         const { summary, purpose } = heuristicSummary(relPath, content);
-        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose });
+        files.push({ filename: path.basename(relPath), path: relPath, summary, purpose, dumpPart, dumpLineCount });
     }
   }
 
@@ -182,9 +307,12 @@ export async function buildIndex(
     root: cwd,
     fileCount: files.length,
     files,
+    dumpParts: dumpWriter ? dumpWriter.parts() : undefined,
+    dumpMaxBytesPerPart: dumpWriter ? maxDumpBytesPerPart : undefined,
+    ignoreFilesUsed: ignoreFilesUsed.length ? ignoreFilesUsed : undefined,
+    ignoredCount: ignoredCount || undefined,
   };
 
-  const devxDir = path.join(cwd, DEVX_DIR);
   fs.mkdirSync(devxDir, { recursive: true });
   fs.writeFileSync(getIndexPath(cwd), JSON.stringify(index, null, 2), "utf-8");
 
@@ -204,3 +332,4 @@ export function searchIndex(index: WorkspaceIndex, query: string, limit = 15): I
     )
     .slice(0, limit);
 }
+
