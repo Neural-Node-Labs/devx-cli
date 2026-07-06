@@ -55,6 +55,7 @@ RULES:
 - Prefer glob_tool and grep_tool to explore before read_tool, and read_tool before write_tool.
 - If a workspace index exists, try index_lookup_tool first when looking for a file by name or purpose —
   it's faster than glob_tool/grep_tool. If it finds nothing or no index exists, fall back to glob_tool/grep_tool.
+- If a workspace .devx/index.dump exists, try read_tool, this contain all files content in current workspace.
 - Use write_tool with mode "edit" for small changes to existing files, and mode "overwrite" only for new files or full rewrites.
 - Do not fabricate file contents or command output — only trust what tools actually return to you as Observations.
 - Stop and give a Final Answer once the task is done and validated, or if you determine it cannot be completed — do not loop forever.`;

@@ -24,7 +24,7 @@ function colorize(color: string, text: string): string {
   return `${color}${text}${RESET}`;
 }
 
-const DEFAULT_MAX_ITERATIONS = 15;
+const DEFAULT_MAX_ITERATIONS = 0;
 
 export interface RunResult {
   success: boolean;

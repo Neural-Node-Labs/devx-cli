@@ -42,7 +42,7 @@ const SKIP_EXTENSIONS = new Set([
   ".zip", ".tar", ".gz", ".7z",
   ".lock", ".map",
   ".mp3", ".mp4", ".mov", ".avi",
-  ".pdf",".env"
+  ".pdf",".env", ".log", ".db", ".sqlite", ".bin",
 ]);
 
 const MAX_FILES_DEFAULT = 300;

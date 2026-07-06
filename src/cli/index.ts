@@ -239,6 +239,7 @@ async function main() {
         taskDescription = buildChatTask(parsed);
         break;
       case "doc":
+        await runIndexCommand(cwd, llm);
         taskDescription = buildDocTask(parsed);
         break;
       case "predeploy":

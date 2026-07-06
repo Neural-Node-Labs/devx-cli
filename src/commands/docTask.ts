@@ -46,15 +46,13 @@ function buildReadmeTask(): string {
 ${GROUNDING_RULE}
 
 INSTRUCTIONS:
-1. Explore the workspace to determine: what the project does, its language/framework/runtime, folder
-   structure, entry point(s), dependencies (check package.json / requirements.txt / pyproject.toml / go.mod
-   / Cargo.toml / etc., whichever exists), existing build/test/run scripts, and any existing README.md to
-   preserve genuinely useful content from (don't blindly overwrite good existing sections).
-2. Write README.md at the project root (write_tool) covering: a clear project summary, key features,
+1. Check if .devx/index.dump exists. use read_tool to to get all files content. IMPORTANT: this file is too large to read in one go, so you must read it in chunks of 1000 lines or less. If the file is too large to read in one go, you must read it in chunks of 1000 lines or less. You can use the "startLine" and "endLine" parameters to specify the range of lines to read. For example, to read lines 1-1000, use { "path": ".devx/index.dump", "startLine": 1, "endLine": 1000 }. To read lines 1001-2000, use { "path": ".devx/index.dump", "startLine": 1001, "endLine": 2000 }, and so on. You can also use grep_tool to search for specific keywords in the index dump.
+2. If .devx/index.dump doesn't exist, use glob_tool and grep_tool to explore the project structure and identify key files (package.json, pyproject.toml, go.mod, etc.), entry points (main scripts, CLI commands, API routes), and any existing documentation (docs/, design.md, etc.). Read relevant files with read_tool to understand the project's purpose, features, and usage.
+3. Write README.md at the project root (write_tool) covering: a clear project summary, key features,
    prerequisites, install/setup steps, how to run it, how to run its tests, a brief project structure
    overview, and a contributing section if there's evidence this is a collaborative project.
-3. Re-read the file back with read_tool to confirm it saved correctly and renders as well-formed markdown.
-4. Give a Final Answer summarizing what the README now covers and noting anything you couldn't verify.`;
+4. Re-read the file back with read_tool to confirm it saved correctly and renders as well-formed markdown.
+5. Give a Final Answer summarizing what the README now covers and noting anything you couldn't verify.`;
 }
 
 function buildBlueprintTask(): string {
