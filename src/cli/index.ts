@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file src/cli/index.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import { parseArgs, ParsedCli } from "./parseArgs";
@@ -20,11 +20,12 @@ import { buildDocTask } from "../commands/docTask";
 import { buildPredeployTask } from "../commands/predeploy";
 import { runIndexCommand } from "../commands/indexWorkspace";
 import { runCopyCommand } from "../commands/copyRemote";
+import { runHashCommand } from "../commands/hashSecret";
 import { parseTargets } from "../remote/sshConnection";
 import { RemoteConfig } from "../remote/types";
 import { appendHistoryEntry, getLastUnfinishedTask, TaskStatus } from "../devxState/historyManager";
 import { CLI_COMMAND_NAME, BRAND_NAME, BRAND_ABBREVIATION, VERSION } from "../generated/brand";
-
+import { randomBytes } from 'crypto';
 const CMD = CLI_COMMAND_NAME;
 
 const HELP = `${BRAND_NAME} (${BRAND_ABBREVIATION}) — command: ${CMD} — v${VERSION}
@@ -43,7 +44,15 @@ Usage:
   ${CMD} -copy [local file or folder] -target [host1,host2] -user [user] -password [password] -remote [destPath]
   ${CMD} -doc [readme|blueprint|scenario|testsuite|setup|testcase]
   ${CMD} -predeploy [instruction]
+  ${CMD} -hash [32|64] -secret [value]
+  ${CMD} -hash32
   ${CMD} -version
+
+-hash keys a hash of -secret with a local, auto-generated per-workspace key
+  (.${CMD}/hash.key, never committed — .gitignore already excludes .${CMD}/), truncated
+  to 32 or 64 bits. Same secret + same workspace always reproduces the same hash;
+  the secret value itself is never printed, logged, or stored. Runs directly, not
+  through the LLM agent loop.
 
 -predeploy makes the workspace ready to run locally and/or in Docker: creates or fixes
 whatever's missing (Dockerfile, .dockerignore, docker-compose.yml, .env.example, etc.),
@@ -127,6 +136,10 @@ function buildRequestPreview(parsed: ParsedCli): string {
       return `doc: ${parsed.rawValues["doc"] || "?"}`;
     case "predeploy":
       return `predeploy: ${parsed.rawValues["predeploy"] || "(default: local + docker readiness)"}`;
+    case "hash":
+      // Deliberately omits the -secret value itself — history.md must never contain it.
+      return `hash: ${parsed.rawValues["hash"] || "?"}-bit`;
+
     default:
       return parsed.command;
   }
@@ -149,6 +162,20 @@ async function main() {
     console.log(`${BRAND_NAME} (${BRAND_ABBREVIATION}) v${VERSION} — command: ${CMD}`);
     return;
   }
+
+  if (argv.includes("-hash32") || argv.includes("--hash32")) {
+
+    try {
+            console.log('Generating Hash 32 key');
+            const { randomBytes } = require('crypto'); // Use require if not using ES modules
+            const token = randomBytes(32).toString('hex');
+            console.log(token);
+        } catch (error) {
+            console.error('Failed to generate secret key:', error);
+        }
+    return;
+    }
+
 
   const parsed = parseArgs(argv);
   const cwd = process.env.DEVX_CWD || process.cwd();
@@ -185,6 +212,25 @@ async function main() {
     });
 
     process.exit(allOk ? 0 : 1);
+  }
+
+
+
+
+  // -hash: a direct, deterministic local computation — not an agent loop, no LLM call.
+  if (parsed.command === "hash") {
+    const result = runHashCommand(parsed, cwd);
+    console.log(`${CMD}: ${result.bits}-bit hash -> ${result.hash}`);
+    console.log(`${CMD}: keyed with ${result.keyPath} (local only, never printed or committed)`);
+
+    appendHistoryEntry(cwd, {
+      command: "hash",
+      requestPreview: buildRequestPreview(parsed),
+      status: "completed",
+      iterations: 0,
+      summary: `${result.bits}-bit hash computed: ${result.hash}`,
+    });
+    return;
   }
 
   let taskDescription: string;
@@ -278,3 +324,4 @@ main().catch((err) => {
   console.error(`${CLI_COMMAND_NAME}: fatal error — ${err.message}`);
   process.exit(1);
 });
+

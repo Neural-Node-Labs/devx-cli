@@ -1,6 +1,7 @@
+
 /**
  * @file src/cli/parseArgs.ts
- * @version 0.2.0
+ * @version 0.3.0
  * @sea-cli-instruction Increment @version above whenever this file is modified.
  */
 import fs from "fs";
@@ -18,7 +19,9 @@ export type CommandName =
   | "ssh"
   | "copy"
   | "doc"
-  | "predeploy";
+  | "predeploy"
+  | "hash"
+  | "hash32";
 
 export interface ParsedCli {
   command: CommandName;
@@ -41,14 +44,18 @@ const KNOWN_COMMANDS: CommandName[] = [
   "copy",
   "doc",
   "predeploy",
+  "hash",
+  "hash32"
 ];
 
 /**
  * Flags that must NEVER be auto-resolved to file content, even if a file happens to
  * exist at that path — they're connection details or a source path meant to be used
  * as-is (e.g. -copy holds the path to upload, not something to read and inline).
+ * -secret is raw-only for the same reason -password is: it must never be silently
+ * swapped out for the contents of some unrelated same-named file on disk.
  */
-const RAW_ONLY_FLAGS = new Set(["target", "user", "password", "copy", "remote", "doc"]);
+const RAW_ONLY_FLAGS = new Set(["target", "user", "password", "copy", "remote", "doc", "secret"]);
 
 /**
  * Resolves a CLI value: if it points to an existing file, read and return the file's
@@ -71,6 +78,7 @@ function resolveValue(value: string): string {
  *   devx -test "detail" -component compo1
  *   devx -ssh -task "deploy the docker workspace" -target host1,host2 -user root -password secret
  *   devx -copy build/ -target host1,host2 -user root -password secret -remote ~/app
+ *   devx -hash 32 -secret "my-api-key"
  *
  * Every flag is single-dash. The first flag name is also used to pick the subcommand.
  */
@@ -118,3 +126,4 @@ export function parseArgs(argv: string[]): ParsedCli {
 
   return { command: firstFlag, values, rawValues };
 }
+
